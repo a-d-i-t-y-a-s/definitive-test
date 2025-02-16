@@ -1,6 +1,5 @@
 'use client'
-import { useState } from "react";
-import { vaultAbi } from "@/abi/VaultABI";
+import { useState, useEffect } from "react";
 import {
   useEstimateGas,
   useSendTransaction,
@@ -8,9 +7,12 @@ import {
   useAccount,
   useDisconnect,
 } from "wagmi";
-import { CoinbaseWalletConnector } from "wagmi";
 import { parseUnits, encodeFunctionData } from "viem";
+import { vaultAbi } from "@/abi/VaultABI";
+import BatchWithdrawAction from "../components/BatchWithdrawAction";
+import BatchWithdrawModal from "../components/BatchWithdrawModal";
 
+// --- Helper Types and Functions ---
 interface TokenBalance {
   chain: string;
   chain_id: number;
@@ -24,20 +26,16 @@ interface TokenBalance {
   pool_size?: number;
 }
 
-// Helper to truncate long addresses (except for "native")
 function truncateAddress(address: string) {
   return address.slice(0, 5) + "....." + address.slice(-4);
 }
 
-// Helper to format the token amount (dividing by 10^decimals)
 function formatTokenAmount(amount: string, decimals: number): string {
   const computed = parseFloat(amount) / Math.pow(10, decimals);
   return computed.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
-// ----- WithdrawAction Component -----
-// This component encodes a call to withdrawTo so that funds are withdrawn from the vault (vaultAddress)
-// and sent to the connected wallet (recipientAddress) for the specified token and amount.
+// --- Existing Single Withdraw Components ---
 function WithdrawAction({
   vaultAddress,
   token,
@@ -49,7 +47,6 @@ function WithdrawAction({
   withdrawAmount: string;
   recipientAddress: string;
 }) {
-  // Convert the human‑readable amount into base units.
   let parsedAmount: bigint | undefined;
   try {
     if (withdrawAmount) {
@@ -59,8 +56,6 @@ function WithdrawAction({
     console.error("Invalid amount", e);
   }
 
-  // Encode the call data for the withdrawTo function.
-  // withdrawTo expects (amount, erc20Token, recipientAddress)
   let callData: `0x${string}` | undefined;
   if (parsedAmount && recipientAddress) {
     callData = encodeFunctionData({
@@ -70,25 +65,20 @@ function WithdrawAction({
     });
   }
 
-  // Ensure vaultAddress is a valid hex string.
   const hexVaultAddress = vaultAddress.startsWith("0x")
     ? vaultAddress
     : "0x" + vaultAddress;
 
-  // Estimate gas for this transaction.
   const { data: estimatedGas, isLoading: isEstimating } = useEstimateGas({
     to: hexVaultAddress as `0x${string}`,
     data: callData,
   });
 
-  // Override gas if the estimation is too low (e.g., 21000)
-  // You might adjust 150000 to a value appropriate for your contract.
   const finalGas =
     estimatedGas && estimatedGas > BigInt(21000)
       ? estimatedGas
       : BigInt(150000);
 
-  // Prepare to send the transaction.
   const { sendTransaction, error, data } = useSendTransaction();
 
   return (
@@ -118,14 +108,175 @@ function WithdrawAction({
   );
 }
 
+const NATIVE_TOKEN_PLACEHOLDER = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
+function WithdrawNativeAction({
+  vaultAddress,
+  withdrawAmount,
+  recipientAddress,
+}: {
+  vaultAddress: string;
+  withdrawAmount: string;
+  recipientAddress: string;
+}) {
+  const effectiveNativeAddress = NATIVE_TOKEN_PLACEHOLDER;
+  useEffect(() => {
+    console.log("Using native token placeholder:", effectiveNativeAddress);
+  }, [effectiveNativeAddress]);
+
+  let parsedAmount: bigint | undefined;
+  try {
+    if (withdrawAmount) {
+      parsedAmount = parseUnits(withdrawAmount, 18);
+    }
+  } catch (e) {
+    console.error("Invalid amount", e);
+  }
+
+  let callData: `0x${string}` | undefined;
+  if (parsedAmount && recipientAddress) {
+    callData = encodeFunctionData({
+      abi: vaultAbi,
+      functionName: "withdrawTo",
+      args: [parsedAmount, effectiveNativeAddress, recipientAddress],
+    });
+  }
+
+  const hexVaultAddress = vaultAddress.startsWith("0x")
+    ? vaultAddress
+    : "0x" + vaultAddress;
+
+  const { data: estimatedGas, isLoading: isEstimating } = useEstimateGas({
+    to: hexVaultAddress as `0x${string}`,
+    data: callData,
+  });
+
+  const finalGas =
+    estimatedGas && estimatedGas > BigInt(21000)
+      ? estimatedGas
+      : BigInt(150000);
+
+  const { sendTransaction, error, data } = useSendTransaction();
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        disabled={!sendTransaction || isEstimating || !finalGas || !callData}
+        onClick={() => {
+          if (sendTransaction && callData && finalGas) {
+            sendTransaction({
+              to: hexVaultAddress,
+              data: callData,
+              gas: finalGas,
+            });
+          }
+        }}
+        className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
+      >
+        Withdraw Native
+      </button>
+      {error && (
+        <div className="text-red-500 text-xs">Error: {error.message}</div>
+      )}
+      {data && (
+        <div className="text-green-500 text-xs">Withdrawal successful!</div>
+      )}
+    </div>
+  );
+}
+
+// --- Batch Withdrawal Functionality ---
+// This function builds and sends the batch withdrawal call.
+function sendBatchWithdrawal({
+  vaultAddress,
+  tokens,
+  withdrawAmounts,
+  recipientAddress,
+}: {
+  vaultAddress: string;
+  tokens: TokenBalance[];
+  withdrawAmounts: { [key: string]: string };
+  recipientAddress: string;
+}) {
+  // Build an array of call objects
+  const calls = tokens.reduce((acc, token) => {
+    const key = token.address === "native" ? "native" : token.address;
+    const amountStr = withdrawAmounts[key];
+    if (!amountStr || amountStr === "0") return acc;
+    let parsedAmount: bigint | undefined;
+    try {
+      parsedAmount =
+        token.address === "native"
+          ? parseUnits(amountStr, 18)
+          : parseUnits(amountStr, token.decimals);
+    } catch (e) {
+      console.error("Invalid amount for token", token, e);
+      return acc;
+    }
+    const tokenAddress =
+      token.address === "native"
+        ? NATIVE_TOKEN_PLACEHOLDER
+        : token.address;
+    const callData = encodeFunctionData({
+      abi: vaultAbi,
+      functionName: "withdrawTo",
+      args: [parsedAmount, tokenAddress, recipientAddress],
+    });
+    acc.push({
+      target: vaultAddress,
+      value: "0",
+      data: callData,
+    });
+    return acc;
+  }, [] as { target: string; value: string; data: string }[]);
+
+  if (calls.length === 0) {
+    alert("No tokens selected for withdrawal.");
+    return;
+  }
+
+  // Encode the batch call to executeBatch.
+  const batchCallData = encodeFunctionData({
+    abi: vaultAbi,
+    functionName: "executeBatch",
+    args: [calls],
+  });
+
+  const hexVaultAddress = vaultAddress.startsWith("0x")
+    ? vaultAddress
+    : "0x" + vaultAddress;
+
+  const { data: estimatedGas, isLoading: isEstimating } = useEstimateGas({
+    to: hexVaultAddress as `0x${string}`,
+    data: batchCallData,
+  });
+
+  const finalGas =
+    estimatedGas && estimatedGas > BigInt(21000)
+      ? estimatedGas
+      : BigInt(300000);
+
+  const { sendTransaction, error, data } = useSendTransaction();
+
+  if (!sendTransaction || !batchCallData) return;
+
+  sendTransaction({
+    to: hexVaultAddress,
+    data: batchCallData,
+    gas: finalGas,
+  });
+}
+
+// --- Main Component: VaultWithdraw ---
 function VaultWithdraw() {
   const [vaultAddress, setVaultAddress] = useState("");
   const [balances, setBalances] = useState<TokenBalance[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [withdrawAmounts, setWithdrawAmounts] = useState<{ [key: string]: string }>({});
+  const [showModal, setShowModal] = useState(false);
+  const [batchData, setBatchData] = useState<{ selectedWithdrawAmounts: { [key: string]: string } } | null>(null);
 
-  // Use Wagmi hooks for wallet connection.
   const { connect, connectors, isLoading: connectLoading, error: connectError } = useConnect();
   const { address: connectedWallet } = useAccount();
   const { disconnect } = useDisconnect();
@@ -134,10 +285,11 @@ function VaultWithdraw() {
     if (!vaultAddress) return;
     setLoading(true);
     setError(null);
+    const duneApiKey = process.env.NEXT_PUBLIC_DUNE_API_KEY ;
 
     const options = {
       method: "GET",
-      headers: { "X-Dune-Api-Key": "CpFDF1tbOEFPKGTpSnoJdnqBRql3vKDm" },
+      headers: { "X-Dune-Api-Key": process.env.NEXT_PUBLIC_DUNE_API_KEY  },
     };
 
     try {
@@ -155,6 +307,21 @@ function VaultWithdraw() {
       setError("Failed to fetch balances. Please try again.");
     }
     setLoading(false);
+  };
+
+  const handleBatchConfirm = (
+    selectedTokens: { [key: string]: boolean },
+    amounts: { [key: string]: string }
+  ) => {
+    const newWithdrawAmounts: { [key: string]: string } = {};
+    for (const key in selectedTokens) {
+      if (selectedTokens[key]) {
+        newWithdrawAmounts[key] = amounts[key] || "";
+      }
+    }
+    setShowModal(false);
+    // Store the selected withdrawal amounts in state so we can render the batch action.
+    setBatchData({ selectedWithdrawAmounts: newWithdrawAmounts });
   };
 
   return (
@@ -247,36 +414,51 @@ function VaultWithdraw() {
                         {formatTokenAmount(token.amount, token.decimals)}
                       </td>
                       <td className="px-4 py-2">
-                        ${token.price_usd !== undefined ? token.price_usd.toFixed(2) : "-"}
+                        $
+                        {token.price_usd !== undefined
+                          ? token.price_usd.toFixed(2)
+                          : "-"}
                       </td>
                       <td className="px-4 py-2">
-                        ${token.value_usd !== undefined ? token.value_usd.toFixed(2) : "-"}
+                        $
+                        {token.value_usd !== undefined
+                          ? token.value_usd.toFixed(2)
+                          : "-"}
                       </td>
                       <td className="px-4 py-2">
-                        {token.address !== "native" ? (
-                          <div className="flex flex-col items-center gap-1">
-                            <input
-                              type="text"
-                              placeholder="Amount"
-                              value={withdrawAmounts[token.address] || ""}
-                              onChange={(e) =>
-                                setWithdrawAmounts((prev) => ({
-                                  ...prev,
-                                  [token.address]: e.target.value,
-                                }))
-                              }
-                              className="border p-1 rounded w-24 text-sm"
+                        <div className="flex flex-col items-center gap-1">
+                          <input
+                            type="text"
+                            placeholder="Amount"
+                            value={
+                              withdrawAmounts[
+                                token.address === "native" ? "native" : token.address
+                              ] || ""
+                            }
+                            onChange={(e) =>
+                              setWithdrawAmounts((prev) => ({
+                                ...prev,
+                                [token.address === "native" ? "native" : token.address]:
+                                  e.target.value,
+                              }))
+                            }
+                            className="border p-1 rounded w-24 text-sm"
+                          />
+                          {token.address === "native" ? (
+                            <WithdrawNativeAction
+                              vaultAddress={vaultAddress}
+                              withdrawAmount={withdrawAmounts["native"] || ""}
+                              recipientAddress={connectedWallet || ""}
                             />
+                          ) : (
                             <WithdrawAction
                               vaultAddress={vaultAddress}
                               token={token}
                               withdrawAmount={withdrawAmounts[token.address] || ""}
                               recipientAddress={connectedWallet || ""}
                             />
-                          </div>
-                        ) : (
-                          "N/A"
-                        )}
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -286,11 +468,43 @@ function VaultWithdraw() {
           </div>
         </div>
       )}
+
+      {/* Batch Withdraw Button */}
+      {balances && balances.length > 0 && (
+        <div className="mt-4">
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+            onClick={() => setShowModal(true)}
+          >
+            Withdraw All Tokens
+          </button>
+        </div>
+      )}
+
       {balances && balances.length === 0 && !loading && (
         <div>No token balances found for this vault.</div>
+      )}
+
+      {/* Modal for Batch Withdrawal */}
+      {showModal && balances && (
+        <BatchWithdrawModal
+          tokens={balances}
+          initialWithdrawAmounts={withdrawAmounts}
+          onConfirm={handleBatchConfirm}
+          onCancel={() => setShowModal(false)}
+        />
+      )}
+
+      {/* Render BatchWithdrawlAction if batch data has been confirmed */}
+      {batchData && (
+        <BatchWithdrawAction
+          vaultAddress={vaultAddress}
+          tokens={balances || []}
+          withdrawAmounts={batchData.selectedWithdrawAmounts}
+          recipientAddress={connectedWallet || ""}
+        />
       )}
     </div>
   );
 }
-
 export default VaultWithdraw;
