@@ -328,7 +328,7 @@ function VaultWithdraw() {
     <div className="mt-20 grid gap-6 pb-16">
       {/* Vault Address Input and Wallet Connect/Disconnect */}
       <div className="mt-10 flex flex-col gap-4 border-b pb-6 text-3xl font-semibold tracking-tight">
-        <div>Vault Address (source contract):</div>
+        <div>Vault Address:</div>
         <div className="flex gap-2">
           <input
             type="text"
@@ -388,7 +388,6 @@ function VaultWithdraw() {
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-4 py-2 text-left">Chain</th>
-                    <th className="px-4 py-2 text-left">Chain ID</th>
                     <th className="px-4 py-2 text-left">Token Address</th>
                     <th className="px-4 py-2 text-left">Symbol</th>
                     <th className="px-4 py-2 text-left">Name</th>
@@ -402,7 +401,6 @@ function VaultWithdraw() {
                   {balances.map((token, index) => (
                     <tr key={index} className="hover:bg-gray-100">
                       <td className="px-4 py-2">{token.chain}</td>
-                      <td className="px-4 py-2">{token.chain_id}</td>
                       <td className="px-4 py-2">
                         {token.address === "native"
                           ? "native"
