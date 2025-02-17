@@ -26,4 +26,6 @@ I cloned this starter kit and then built on top of it. There is a demo video in 
 
 
 ## Demo Video
-C:\Users\adity\OneDrive\Desktop\definitive weekend hackaton\wagmi-viem-template\demo.mkv
+
+https://github.com/user-attachments/assets/1cb8c7b5-c637-4d5f-a0ac-05830f548c26
+
