@@ -102,7 +102,7 @@ function WithdrawAction({
         Withdraw
       </button>
       {error && (
-        <div className="text-red-500 text-xs">Error: {error.message}</div>
+        <div className="text-red-500 text-xs">Error! </div>
       )}
       {data && (
         <div className="text-green-500 text-xs">Withdrawal successful!</div>
@@ -178,7 +178,7 @@ function WithdrawNativeAction({
         Withdraw Native
       </button>
       {error && (
-        <div className="text-red-500 text-xs">Error: {error.message}</div>
+        <div className="text-red-500 text-xs ">Error </div>
       )}
       {data && (
         <div className="text-green-500 text-xs">Withdrawal successful!</div>
