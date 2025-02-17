@@ -265,36 +265,7 @@ function VaultWithdraw() {
           </button>
         </div>
         {/* Wallet Connect/Disconnect */}
-        {/* <div className="mt-4">
-          {connectedWallet ? (
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-green-600">
-                Connected (recipient): {connectedWallet}
-              </div>
-              <button
-                onClick={() => disconnect()}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => {
-                if (connectors[0]) connect({ connector: connectors[0] });
-              }}
-              disabled={connectLoading}
-              className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded"
-            >
-              {connectLoading ? "Connecting..." : "Connect Wallet"}
-            </button>
-          )}
-          {connectError && (
-            <div className="text-red-500 text-xs">Error: {connectError.message}</div>
-          )}
-        </div> */}
         <WalletConnect />
-
       </div>
 
       {/* Loading and error states */}
