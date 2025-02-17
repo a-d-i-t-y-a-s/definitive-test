@@ -6,11 +6,14 @@ import {
   useConnect,
   useAccount,
   useDisconnect,
+  InjectedConnector
 } from "wagmi";
 import { parseUnits, encodeFunctionData } from "viem";
 import { vaultAbi } from "@/abi/VaultABI";
 import BatchWithdrawAction from "../components/BatchWithdrawAction";
 import BatchWithdrawModal from "../components/BatchWithdrawModal";
+
+import WalletConnect from "../components/WalletConnect";
 
 // --- Helper Types and Functions ---
 interface TokenBalance {
@@ -109,7 +112,6 @@ function WithdrawAction({
 }
 
 const NATIVE_TOKEN_PLACEHOLDER = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
-
 function WithdrawNativeAction({
   vaultAddress,
   withdrawAmount,
@@ -183,88 +185,6 @@ function WithdrawNativeAction({
       )}
     </div>
   );
-}
-
-// --- Batch Withdrawal Functionality ---
-// This function builds and sends the batch withdrawal call.
-function sendBatchWithdrawal({
-  vaultAddress,
-  tokens,
-  withdrawAmounts,
-  recipientAddress,
-}: {
-  vaultAddress: string;
-  tokens: TokenBalance[];
-  withdrawAmounts: { [key: string]: string };
-  recipientAddress: string;
-}) {
-  // Build an array of call objects
-  const calls = tokens.reduce((acc, token) => {
-    const key = token.address === "native" ? "native" : token.address;
-    const amountStr = withdrawAmounts[key];
-    if (!amountStr || amountStr === "0") return acc;
-    let parsedAmount: bigint | undefined;
-    try {
-      parsedAmount =
-        token.address === "native"
-          ? parseUnits(amountStr, 18)
-          : parseUnits(amountStr, token.decimals);
-    } catch (e) {
-      console.error("Invalid amount for token", token, e);
-      return acc;
-    }
-    const tokenAddress =
-      token.address === "native"
-        ? NATIVE_TOKEN_PLACEHOLDER
-        : token.address;
-    const callData = encodeFunctionData({
-      abi: vaultAbi,
-      functionName: "withdrawTo",
-      args: [parsedAmount, tokenAddress, recipientAddress],
-    });
-    acc.push({
-      target: vaultAddress,
-      value: "0",
-      data: callData,
-    });
-    return acc;
-  }, [] as { target: string; value: string; data: string }[]);
-
-  if (calls.length === 0) {
-    alert("No tokens selected for withdrawal.");
-    return;
-  }
-
-  // Encode the batch call to executeBatch.
-  const batchCallData = encodeFunctionData({
-    abi: vaultAbi,
-    functionName: "executeBatch",
-    args: [calls],
-  });
-
-  const hexVaultAddress = vaultAddress.startsWith("0x")
-    ? vaultAddress
-    : "0x" + vaultAddress;
-
-  const { data: estimatedGas, isLoading: isEstimating } = useEstimateGas({
-    to: hexVaultAddress as `0x${string}`,
-    data: batchCallData,
-  });
-
-  const finalGas =
-    estimatedGas && estimatedGas > BigInt(21000)
-      ? estimatedGas
-      : BigInt(300000);
-
-  const { sendTransaction, error, data } = useSendTransaction();
-
-  if (!sendTransaction || !batchCallData) return;
-
-  sendTransaction({
-    to: hexVaultAddress,
-    data: batchCallData,
-    gas: finalGas,
-  });
 }
 
 // --- Main Component: VaultWithdraw ---
@@ -345,7 +265,7 @@ function VaultWithdraw() {
           </button>
         </div>
         {/* Wallet Connect/Disconnect */}
-        <div className="mt-4">
+        {/* <div className="mt-4">
           {connectedWallet ? (
             <div className="flex items-center gap-4">
               <div className="text-sm text-green-600">
@@ -372,7 +292,9 @@ function VaultWithdraw() {
           {connectError && (
             <div className="text-red-500 text-xs">Error: {connectError.message}</div>
           )}
-        </div>
+        </div> */}
+        <WalletConnect />
+
       </div>
 
       {/* Loading and error states */}
