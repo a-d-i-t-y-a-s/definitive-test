@@ -22,4 +22,10 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 
 ## Definitive 
 
-I cloned this starter kit and then built on top of it. There is a demo video in the github that showcases the functionality of the software. 
+I cloned this starter kit and then built on top of it. There is a demo video in the github that showcases the functionality of the software. |
+
+
+## Demo Video
+
+https://github.com/user-attachments/assets/1cb8c7b5-c637-4d5f-a0ac-05830f548c26
+
